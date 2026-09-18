@@ -1,15 +1,11 @@
 /* =========================================================================
    CHESS WEBSITE — script.js
-   Uses chess.js (CDN) for rules. Custom minimax AI (no Stockfish — see
-   README for why). Firebase Realtime Database for online multiplayer.
+   Uses chess.js (CDN) for rules. Custom minimax AI (no Stockfish).
+   Firebase Realtime Database for online multiplayer.
    ========================================================================= */
 
 /* -------------------------------------------------------------------------
-   0. FIREBASE CONFIGURATION
-   Paste your Firebase project's config object below. See README.md for
-   step-by-step instructions on where to get these values.
-   If you leave this as-is, Offline play still works fully — only
-   "Play Online" will show an error telling you Firebase isn't configured.
+   0. FIREBASE CONFIGURATION (Optional: Needed only for Online Multiplayer)
 ------------------------------------------------------------------------- */
 const firebaseConfig = {
   apiKey: "PASTE_YOUR_API_KEY_HERE",
@@ -41,7 +37,13 @@ function initFirebase() {
 /* -------------------------------------------------------------------------
    1. GLOBAL STATE
 ------------------------------------------------------------------------- */
-const game = new Chess();
+let game = null;
+
+try {
+  game = new Chess();
+} catch (e) {
+  console.error("chess.js failed to load. Check your internet connection.", e);
+}
 
 let mode = null;              // 'pvc' | 'pvp' | 'online'
 let aiDifficulty = 'medium';  // 'easy' | 'medium' | 'hard'
@@ -98,7 +100,7 @@ function showModal(id) { $(id).classList.remove('hidden'); }
 function hideModal(id) { $(id).classList.add('hidden'); }
 
 /* -------------------------------------------------------------------------
-   3. SOUND (Web Audio — no external files needed)
+   3. SOUND (Web Audio — self-contained)
 ------------------------------------------------------------------------- */
 let audioCtx = null;
 function beep(freq, dur, type = 'sine', vol = 0.15) {
@@ -115,8 +117,9 @@ function beep(freq, dur, type = 'sine', vol = 0.15) {
     osc.start();
     gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + dur);
     osc.stop(audioCtx.currentTime + dur);
-  } catch (e) { /* audio not available — silently ignore */ }
+  } catch (e) { /* audio not available */ }
 }
+
 function playSound(kind) {
   if (kind === 'move') beep(440, 0.08);
   else if (kind === 'capture') beep(300, 0.1, 'square');
@@ -135,9 +138,10 @@ const FILES = ['a','b','c','d','e','f','g','h'];
 
 function renderBoard() {
   const boardEl = $('board');
+  if (!boardEl || !game) return;
   boardEl.innerHTML = '';
 
-  const board = game.board(); // board[0] = rank 8 ... board[7] = rank 1
+  const board = game.board();
   let ranks = [0,1,2,3,4,5,6,7];
   let files = [0,1,2,3,4,5,6,7];
   if (boardFlipped) { ranks = ranks.slice().reverse(); files = files.slice().reverse(); }
@@ -161,7 +165,6 @@ function renderBoard() {
       if (selectedSquare === square) sqEl.classList.add('selected');
       if (lastMove && (lastMove.from === square || lastMove.to === square)) sqEl.classList.add('last-move');
 
-      // check highlight on king square
       if (game.in_check()) {
         const turnColor = game.turn();
         if (piece && piece.type === 'k' && piece.color === turnColor) {
@@ -176,7 +179,6 @@ function renderBoard() {
         sqEl.appendChild(marker);
       }
 
-      // coordinates on edge squares
       if (f === (boardFlipped ? 7 : 0)) {
         const rankLabel = document.createElement('span');
         rankLabel.className = 'coord rank';
@@ -200,7 +202,7 @@ function renderBoard() {
    5. MOVE INTERACTION
 ------------------------------------------------------------------------- */
 function onSquareClick(square) {
-  if (gameOver) return;
+  if (gameOver || !game) return;
   if (!isMyTurnToInteract()) return;
 
   if (selectedSquare) {
@@ -218,7 +220,6 @@ function onSquareClick(square) {
     }
   }
 
-  // select a new square if it has a piece of the side to move
   const piece = game.get(square);
   if (piece && piece.color === game.turn()) {
     selectedSquare = square;
@@ -233,7 +234,7 @@ function onSquareClick(square) {
 function isMyTurnToInteract() {
   if (mode === 'pvc') return game.turn() === humanColor;
   if (mode === 'online') return game.turn() === online.color;
-  return true; // pvp — both sides use same device
+  return true;
 }
 
 function askPromotion(callback) {
@@ -437,20 +438,16 @@ function formatMs(ms) {
 
 function updateClockDisplay() {
   if (!clock.enabled) return;
-  $('clock-white-time').textContent = formatMs(clock.whiteMs);
-  $('clock-black-time').textContent = formatMs(clock.blackMs);
-  $('clock-white').classList.toggle('active', clock.activeColor === 'w' && !gameOver);
-  $('clock-black').classList.toggle('active', clock.activeColor === 'b' && !gameOver);
-  $('clock-white-time').classList.toggle('low', clock.whiteMs < 20000);
-  $('clock-black-time').classList.toggle('low', clock.blackMs < 20000);
+  $('clock-white-time').textContent = formatMs(clock.whiteMs);$('clock-black-time').textContent = formatMs(clock.blackMs);
+  $('clock-white').classList.toggle('active', clock.activeColor === 'w' && !gameOver);$('clock-black').classList.toggle('active', clock.activeColor === 'b' && !gameOver);
+  $('clock-white-time').classList.toggle('low', clock.whiteMs < 20000);$('clock-black-time').classList.toggle('low', clock.blackMs < 20000);
 }
 
 /* -------------------------------------------------------------------------
-   8. CHESS AI (minimax + alpha-beta — no external engine required)
+   8. CHESS AI (Minimax with Alpha-Beta Pruning)
 ------------------------------------------------------------------------- */
 const PIECE_VALUES = { p: 100, n: 320, b: 330, r: 500, q: 900, k: 20000 };
 
-// Simple piece-square tables (white's perspective; mirrored for black)
 const PAWN_TABLE = [
   0,0,0,0,0,0,0,0,
   50,50,50,50,50,50,50,50,
@@ -471,7 +468,7 @@ const KNIGHT_TABLE = [
   -40,-20,0,5,5,0,-20,-40,
   -50,-40,-30,-30,-30,-30,-40,-50
 ];
-const CENTER_TABLE = [ // rough table reused for bishop/rook/queen/king leaning central
+const CENTER_TABLE = [
   -20,-10,-10,-10,-10,-10,-10,-20,
   -10,0,0,0,0,0,0,-10,
   -10,0,5,5,5,5,0,-10,
@@ -482,7 +479,7 @@ const CENTER_TABLE = [ // rough table reused for bishop/rook/queen/king leaning 
   -20,-10,-10,-10,-10,-10,-10,-20
 ];
 
-function squareIndex(file, rank) { return rank * 8 + file; } // rank 0 = rank8 row per board()
+function squareIndex(file, rank) { return rank * 8 + file; }
 
 function evaluateBoard(g) {
   const board = g.board();
@@ -498,12 +495,11 @@ function evaluateBoard(g) {
       score += (p.color === 'w') ? val : -val;
     }
   }
-  return score; // positive favors white
+  return score;
 }
 
 function minimax(g, depth, alpha, beta, maximizing) {
   if (g.in_checkmate()) {
-    // side to move is checkmated — very bad for whoever's turn it is
     return g.turn() === 'w' ? -100000 - depth : 100000 + depth;
   }
   if (g.in_draw() || g.in_stalemate() || g.in_threefold_repetition()) {
@@ -546,7 +542,6 @@ function pickBestMove(g, depth) {
   let best = null;
   let bestVal = maximizing ? -Infinity : Infinity;
 
-  // shuffle for variety among equal-value moves
   for (let i = moves.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [moves[i], moves[j]] = [moves[j], moves[i]];
@@ -567,14 +562,13 @@ function pickBestMove(g, depth) {
 function getAIMove() {
   if (aiDifficulty === 'easy') {
     const moves = game.moves({ verbose: true });
-    // 65% random legal move, 35% a shallow-best move — makes "Easy" beatable
     if (Math.random() < 0.65) {
       return moves[Math.floor(Math.random() * moves.length)];
     }
     return pickBestMove(game, 1);
   }
   if (aiDifficulty === 'medium') return pickBestMove(game, 2);
-  return pickBestMove(game, 3); // hard
+  return pickBestMove(game, 3);
 }
 
 function makeAIMove() {
@@ -654,7 +648,7 @@ $('btn-undo').addEventListener('click', () => {
   if (gameOver) return;
   clearTimeout(aiMoveTimer);
   game.undo();
-  if (mode === 'pvc') game.undo(); // undo both the AI move and the human move
+  if (mode === 'pvc') game.undo();
   lastMove = null;
   selectedSquare = null;
   legalTargets = [];
@@ -677,417 +671,4 @@ $('btn-resign').addEventListener('click', () => {
   });
 });
 
-$('btn-draw-offer').addEventListener('click', () => {
-  if (mode === 'online') {
-    if (!online.roomRef) return;
-    online.roomRef.child('drawOffer').set(online.color);
-    toast('Draw offer sent.');
-  } else {
-    confirmAction('Agree to a draw?', () => endGame('Draw agreed'));
-  }
-});
-
-$('btn-draw-accept').addEventListener('click', () => {
-  hideModal('draw-offer-modal');
-  if (online.roomRef) online.roomRef.update({ drawOffer: null, result: 'draw-agreed', status: 'finished' });
-  endGame('Draw agreed');
-});
-$('btn-draw-decline').addEventListener('click', () => {
-  hideModal('draw-offer-modal');
-  if (online.roomRef) online.roomRef.child('drawOffer').set(null);
-});
-
-function confirmAction(text, onYes) {
-  $('confirm-text').textContent = text;
-  showModal('confirm-modal');
-  const yesBtn = $('btn-confirm-yes');
-  const noBtn = $('btn-confirm-no');
-  const cleanup = () => {
-    yesBtn.replaceWith(yesBtn.cloneNode(true));
-    noBtn.replaceWith(noBtn.cloneNode(true));
-  };
-  cleanup();
-  $('btn-confirm-yes').addEventListener('click', () => { hideModal('confirm-modal'); onYes(); });
-  $('btn-confirm-no').addEventListener('click', () => hideModal('confirm-modal'));
-}
-
-$('btn-sound-toggle').addEventListener('click', () => {
-  soundOn = !soundOn;
-  localStorage.setItem('chess_sound_pref', soundOn ? 'on' : 'off');
-  $('btn-sound-toggle').textContent = soundOn ? '🔊' : '🔇';
-});
-
-/* -------------------------------------------------------------------------
-   10. OFFLINE PERSISTENCE (localStorage) — resume unfinished game
-------------------------------------------------------------------------- */
-function saveOfflineGameIfNeeded() {
-  if (mode === 'online' || gameOver) {
-    if (gameOver) localStorage.removeItem('chess_offline_game');
-    return;
-  }
-  const data = {
-    fen: game.fen(),
-    mode, aiDifficulty, humanColor, boardFlipped,
-    clock: clock.enabled ? { whiteMs: clock.whiteMs, blackMs: clock.blackMs, incrementMs: clock.incrementMs, activeColor: clock.activeColor } : null
-  };
-  localStorage.setItem('chess_offline_game', JSON.stringify(data));
-}
-
-function loadOfflineGame() {
-  const raw = localStorage.getItem('chess_offline_game');
-  if (!raw) return false;
-  try {
-    const data = JSON.parse(raw);
-    game.load(data.fen);
-    mode = data.mode;
-    aiDifficulty = data.aiDifficulty;
-    humanColor = data.humanColor;
-    boardFlipped = data.boardFlipped;
-    gameOver = false;
-    selectedSquare = null;
-    legalTargets = [];
-    lastMove = null;
-    if (data.clock) {
-      clock.enabled = true;
-      clock.whiteMs = data.clock.whiteMs;
-      clock.blackMs = data.clock.blackMs;
-      clock.incrementMs = data.clock.incrementMs;
-      clock.activeColor = data.clock.activeColor;
-      $('clocks-row').classList.remove('hidden');
-    } else {
-      clock.enabled = false;
-      $('clocks-row').classList.add('hidden');
-    }
-    updateStatus();
-    updateMoveHistory();
-    renderBoard();
-    updateClockDisplay();
-    $('room-code-badge').classList.add('hidden');
-    showScreen('screen-game');
-    if (clock.enabled) startClock();
-    return true;
-  } catch (e) {
-    return false;
-  }
-}
-
-/* -------------------------------------------------------------------------
-   11. ONLINE MULTIPLAYER
-------------------------------------------------------------------------- */
-function generateRoomCode() {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O/1/I ambiguity
-  let code = '';
-  for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
-  return code;
-}
-
-function getOrCreatePlayerId() {
-  let id = localStorage.getItem('chess_player_id');
-  if (!id) {
-    id = 'p_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
-    localStorage.setItem('chess_player_id', id);
-  }
-  return id;
-}
-
-function showOnlineError(msg) {
-  const el = $('online-error');
-  el.textContent = msg;
-  el.classList.remove('hidden');
-}
-function hideOnlineError() { $('online-error').classList.add('hidden'); }
-
-$('btn-create-room').addEventListener('click', async () => {
-  hideOnlineError();
-  if (!initFirebase()) { showOnlineError('Online play is not configured yet. See README.md to add your Firebase config.'); return; }
-
-  const code = generateRoomCode();
-  const playerId = getOrCreatePlayerId();
-  const timeSpec = $('online-time-select').value;
-  let clockConfig = null;
-  if (timeSpec !== 'none') {
-    const [secs, inc] = timeSpec.split('-').map(Number);
-    clockConfig = { whiteMs: secs * 1000, blackMs: secs * 1000, incrementMs: inc * 1000 };
-  }
-
-  const roomData = {
-    fen: new Chess().fen(),
-    turn: 'w',
-    white: playerId,
-    black: null,
-    status: 'waiting',
-    result: null,
-    resigned: null,
-    drawOffer: null,
-    clock: clockConfig,
-    createdAt: Date.now()
-  };
-
-  try {
-    await fbDb.ref('rooms/' + code).set(roomData);
-  } catch (e) {
-    showOnlineError('Could not create room. Check your internet connection.');
-    return;
-  }
-
-  online.roomCode = code;
-  online.playerId = playerId;
-  online.color = 'w';
-  localStorage.setItem('chess_online_session', JSON.stringify({ roomCode: code, playerId, color: 'w' }));
-
-  $('room-code-display').textContent = code;
-  $('online-setup-forms').classList.add('hidden');
-  $('online-waiting').classList.remove('hidden');
-
-  attachRoomListener(code);
-});
-
-$('btn-copy-link').addEventListener('click', () => {
-  const url = location.href.split('?')[0] + '?room=' + online.roomCode;
-  navigator.clipboard?.writeText(url).then(() => toast('Link copied!')).catch(() => toast(url));
-});
-
-$('btn-cancel-room').addEventListener('click', async () => {
-  if (online.roomRef) online.roomRef.off();
-  if (fbDb && online.roomCode) {
-    try { await fbDb.ref('rooms/' + online.roomCode).remove(); } catch (e) {}
-  }
-  localStorage.removeItem('chess_online_session');
-  online = { roomCode: null, playerId: null, color: null, roomRef: null, listener: null, applyingRemote: false };
-  $('online-setup-forms').classList.remove('hidden');
-  $('online-waiting').classList.add('hidden');
-});
-
-$('btn-join-room').addEventListener('click', async () => {
-  hideOnlineError();
-  if (!initFirebase()) { showOnlineError('Online play is not configured yet. See README.md to add your Firebase config.'); return; }
-
-  const code = $('join-code-input').value.trim().toUpperCase();
-  if (code.length !== 6) { showOnlineError('Enter a valid 6-character room code.'); return; }
-
-  const playerId = getOrCreatePlayerId();
-  const roomRef = fbDb.ref('rooms/' + code);
-
-  let snap;
-  try {
-    snap = await roomRef.get();
-  } catch (e) {
-    showOnlineError('Could not reach the server. Check your internet connection.');
-    return;
-  }
-
-  if (!snap.exists()) { showOnlineError('Room not found. Check the code and try again.'); return; }
-  const roomData = snap.val();
-
-  if (roomData.black && roomData.black !== playerId && roomData.white !== playerId) {
-    showOnlineError('This room is already full.');
-    return;
-  }
-
-  if (!roomData.black && roomData.white !== playerId) {
-    await roomRef.update({ black: playerId, status: 'active' });
-    online.color = 'b';
-  } else if (roomData.white === playerId) {
-    online.color = 'w';
-  } else {
-    online.color = 'b';
-  }
-
-  online.roomCode = code;
-  online.playerId = playerId;
-  localStorage.setItem('chess_online_session', JSON.stringify({ roomCode: code, playerId, color: online.color }));
-
-  enterOnlineGame(code);
-});
-
-function attachRoomListener(code) {
-  online.roomRef = fbDb.ref('rooms/' + code);
-  online.listener = online.roomRef.on('value', (snap) => {
-    if (!snap.exists()) {
-      toast('The game room was closed.');
-      return;
-    }
-    const data = snap.val();
-    handleRemoteRoomUpdate(data);
-  });
-}
-
-function enterOnlineGame(code) {
-  mode = 'online';
-  boardFlipped = online.color === 'b';
-  gameOver = false;
-  $('room-code-badge').textContent = 'Room: ' + code;
-  $('room-code-badge').classList.remove('hidden');
-  showScreen('screen-game');
-  if (!online.roomRef) attachRoomListener(code); // creator already has a listener from btn-create-room
-}
-
-function handleRemoteRoomUpdate(data) {
-  online.applyingRemote = true;
-
-  if (data.status === 'waiting') {
-    // still shown on waiting screen; nothing to render yet
-    online.applyingRemote = false;
-    return;
-  }
-
-  if ($('screen-game').classList.contains('active') === false) {
-    // opponent joined while we were on the waiting screen
-    $('online-waiting').classList.add('hidden');
-    enterOnlineGame(online.roomCode);
-  }
-
-  if (data.fen && data.fen !== game.fen()) {
-    game.load(data.fen);
-  }
-
-  if (data.clock) {
-    clock.enabled = true;
-    clock.whiteMs = data.clock.whiteMs;
-    clock.blackMs = data.clock.blackMs;
-    clock.incrementMs = data.clock.incrementMs || 0;
-    clock.activeColor = game.turn();
-    $('clocks-row').classList.remove('hidden');
-  } else {
-    clock.enabled = false;
-    $('clocks-row').classList.add('hidden');
-  }
-
-  selectedSquare = null;
-  legalTargets = [];
-  updateStatus();
-  updateMoveHistory();
-  renderBoard();
-  updateClockDisplay();
-
-  if (data.drawOffer && data.drawOffer !== online.color) {
-    $('draw-offer-text').textContent = 'Opponent offered a draw';
-    showModal('draw-offer-modal');
-  } else {
-    hideModal('draw-offer-modal');
-  }
-
-  if (data.resigned) {
-    const winner = data.resigned === 'w' ? 'Black' : 'White';
-    endGame(`${winner} wins by resignation`);
-  } else if (data.result === 'draw-agreed') {
-    endGame('Draw agreed');
-  } else if (game.game_over() && !gameOver) {
-    checkGameOver();
-  }
-
-  if (data.status === 'active' && clock.enabled && !gameOver) {
-    startClock();
-  }
-
-  online.applyingRemote = false;
-}
-
-function pushOnlineState(finished, extra) {
-  if (!online.roomRef) return;
-  const payload = {
-    fen: game.fen(),
-    turn: game.turn(),
-    status: finished ? 'finished' : 'active',
-    drawOffer: null
-  };
-  if (clock.enabled) {
-    payload.clock = { whiteMs: clock.whiteMs, blackMs: clock.blackMs, incrementMs: clock.incrementMs };
-  }
-  if (extra) Object.assign(payload, extra);
-  online.roomRef.update(payload).catch(() => toast('Could not sync move — check your connection.'));
-}
-
-/* Attempt to restore an online session on page load (refresh / reconnect) */
-function tryRestoreOnlineSession() {
-  const raw = localStorage.getItem('chess_online_session');
-  if (!raw) return false;
-  let session;
-  try { session = JSON.parse(raw); } catch (e) { return false; }
-  if (!session || !session.roomCode) return false;
-  if (!initFirebase()) return false;
-
-  fbDb.ref('rooms/' + session.roomCode).get().then((snap) => {
-    if (!snap.exists()) { localStorage.removeItem('chess_online_session'); return; }
-    online.roomCode = session.roomCode;
-    online.playerId = session.playerId;
-    online.color = session.color;
-    enterOnlineGame(session.roomCode);
-  }).catch(() => {});
-  return true;
-}
-
-/* -------------------------------------------------------------------------
-   12. NAVIGATION / SETUP SCREEN WIRING
-------------------------------------------------------------------------- */
-$('btn-play-offline').addEventListener('click', () => {
-  const hasSaved = !!localStorage.getItem('chess_offline_game');
-  $('resume-banner').classList.toggle('hidden', !hasSaved);
-  showScreen('screen-offline-setup');
-});
-
-$('btn-resume-game').addEventListener('click', () => {
-  if (!loadOfflineGame()) toast('Could not resume — starting fresh.');
-});
-
-$('btn-play-online').addEventListener('click', () => {
-  hideOnlineError();
-  $('online-setup-forms').classList.remove('hidden');
-  $('online-waiting').classList.add('hidden');
-  showScreen('screen-online-setup');
-});
-
-$('btn-how-to-play').addEventListener('click', () => showScreen('screen-howto'));
-
-document.querySelectorAll('[data-back]').forEach(btn => {
-  btn.addEventListener('click', () => showScreen(btn.dataset.back));
-});
-
-$('btn-back-home').addEventListener('click', () => {
-  confirmAction('Leave this game and go home?', () => {
-    clearTimeout(aiMoveTimer);
-    stopClock();
-    if (mode === 'online' && online.roomRef) {
-      online.roomRef.off();
-    }
-    showScreen('screen-home');
-  });
-});
-
-document.querySelectorAll('.diff-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    const timeSpec = $('offline-time-select').value;
-    startOfflineGame('pvc', btn.dataset.diff, timeSpec);
-  });
-});
-
-$('btn-start-pvp').addEventListener('click', () => {
-  const timeSpec = $('offline-time-select').value;
-  startOfflineGame('pvp', null, timeSpec);
-});
-
-/* -------------------------------------------------------------------------
-   13. INIT
-------------------------------------------------------------------------- */
-function init() {
-  $('btn-sound-toggle').textContent = soundOn ? '🔊' : '🔇';
-
-  // If URL has ?room=CODE, pre-fill join field
-  const params = new URLSearchParams(location.search);
-  if (params.get('room')) {
-    $('join-code-input').value = params.get('room').toUpperCase();
-  }
-
-  const restoredOnline = tryRestoreOnlineSession();
-  if (!restoredOnline) {
-    renderBoard(); // draw an initial empty-ish board so screen-game isn't blank if reached directly
-  }
-
-  showScreen('screen-home');
-
-  window.addEventListener('beforeunload', () => {
-    saveOfflineGameIfNeeded();
-  });
-}
-
-init();
+$('btn-draw-offer').addEventListener('click', () 
