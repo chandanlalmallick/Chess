@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Chess</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<!-- ================= HOME SCREEN ================= -->
+<section id="screen-home" class="screen active">
+  <div class="home-wrap">
+    <h1 class="logo">♟ CHESS</h1>
+    <div class="home-buttons">
+      <button class="btn btn-primary" id="btn-play-offline">Play Offline</button>
+      <button class="btn btn-primary" id="btn-play-online">Play Online</button>
+      <button class="btn btn-secondary" id="btn-how-to-play">How to Play</button>
+    </div>
+  </div>
+</section>
+
+<!-- ================= HOW TO PLAY ================= -->
+<section id="screen-howto" class="screen">
+  <div class="panel">
+    <button class="btn btn-back" data-back="screen-home">&larr; Back</button>
+    <h2>How to Play</h2>
+    <div class="howto-content">
+      <h3>Objective</h3>
+      <p>Checkmate your opponent's king — trap it so it cannot escape capture.</p>
+
+      <h3>How Pieces Move</h3>
+      <ul>
+        <li><strong>Pawn:</strong> Moves forward one square (two on its first move), captures diagonally.</li>
+        <li><strong>Knight:</strong> Moves in an "L" shape and can jump over pieces.</li>
+        <li><strong>Bishop:</strong> Moves any distance diagonally.</li>
+        <li><strong>Rook:</strong> Moves any distance horizontally or vertically.</li>
+        <li><strong>Queen:</strong> Moves any distance in any direction.</li>
+        <li><strong>King:</strong> Moves one square in any direction.</li>
+      </ul>
+
+      <h3>Check &amp; Checkmate</h3>
+      <p>"Check" means the king is under attack. If the king cannot escape check, it's "checkmate" and the game ends.</p>
+
+      <h3>Castling</h3>
+      <p>A special move where the king moves two squares toward a rook, and the rook moves to the square the king crossed. Allowed only if neither piece has moved, the squares between are empty, and the king is not in, through, or into check.</p>
+
+      <h3>En Passant</h3>
+      <p>If an enemy pawn moves two squares and lands beside your pawn, you may capture it as if it had moved only one square, but only immediately on the next move.</p>
+
+      <h3>Promotion</h3>
+      <p>When a pawn reaches the far end of the board, it must be promoted to a queen, rook, bishop, or knight.</p>
+
+      <h3>Draws</h3>
+      <p>A game is drawn by stalemate (no legal moves, not in check), insufficient material, threefold repetition, the fifty-move rule, or agreement between players.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ================= OFFLINE SETUP ================= -->
+<section id="screen-offline-setup" class="screen">
+  <div class="panel">
+    <button class="btn btn-back" data-back="screen-home">&larr; Back</button>
+    <h2>Play Offline</h2>
+
+    <div id="resume-banner" class="setup-group hidden">
+      <h3>Unfinished Game</h3>
+      <button class="btn btn-primary" id="btn-resume-game">Resume Last Game</button>
+    </div>
+
+    <div class="setup-group">
+      <h3>Player vs Computer</h3>
+      <div class="difficulty-row">
+        <button class="btn btn-outline diff-btn" data-diff="easy">Easy</button>
+        <button class="btn btn-outline diff-btn" data-diff="medium">Medium</button>
+        <button class="btn btn-outline diff-btn" data-diff="hard">Hard</button>
+      </div>
+    </div>
+
+    <div class="setup-group">
+      <h3>Player vs Player</h3>
+      <button class="btn btn-primary" id="btn-start-pvp">Start Local Game</button>
+    </div>
+
+    <div class="setup-group">
+      <h3>Time Control (optional)</h3>
+      <select id="offline-time-select" class="select">
+        <option value="none">No Clock</option>
+        <option value="60-0">1 + 0</option>
+        <option value="180-0">3 + 0</option>
+        <option value="180-2">3 + 2</option>
+        <option value="300-0">5 + 0</option>
+        <option value="600-0">10 + 0</option>
+        <option value="600-5">10 + 5</option>
+        <option value="900-10">15 + 10</option>
+      </select>
+    </div>
+  </div>
+</section>
+
+<!-- ================= ONLINE SETUP ================= -->
+<section id="screen-online-setup" class="screen">
+  <div class="panel">
+    <button class="btn btn-back" data-back="screen-home">&larr; Back</button>
+    <h2>Play Online</h2>
+
+    <div id="online-setup-forms">
+      <div class="setup-group">
+        <h3>Create a Game</h3>
+        <select id="online-time-select" class="select">
+          <option value="none">No Clock</option>
+          <option value="60-0">1 + 0</option>
+          <option value="180-0">3 + 0</option>
+          <option value="180-2">3 + 2</option>
+          <option value="300-0">5 + 0</option>
+          <option value="600-0">10 + 0</option>
+          <option value="600-5">10 + 5</option>
+          <option value="900-10">15 + 10</option>
+        </select>
+        <button class="btn btn-primary" id="btn-create-room">Create Game</button>
+      </div>
+
+      <div class="setup-group">
+        <h3>Join a Game</h3>
+        <input type="text" id="join-code-input" class="text-input" placeholder="Enter room code" maxlength="6" autocapitalize="characters" />
+        <button class="btn btn-primary" id="btn-join-room">Join Game</button>
+      </div>
+    </div>
+
+    <div id="online-waiting" class="hidden">
+      <h3>Share this code with your opponent</h3>
+      <div class="room-code" id="room-code-display">------</div>
+      <button class="btn btn-outline" id="btn-copy-link">Copy Link</button>
+      <p class="waiting-msg" id="waiting-msg">Waiting for opponent to join...</p>
+      <button class="btn btn-back" id="btn-cancel-room">Cancel</button>
+    </div>
+
+    <p id="online-error" class="error-msg hidden"></p>
+  </div>
+</section>
+
+<!-- ================= GAME SCREEN ================= -->
+<section id="screen-game" class="screen">
+  <div class="game-wrap">
+
+    <div class="game-top-bar">
+      <button class="btn btn-back small" id="btn-back-home">&larr; Home</button>
+      <div id="room-code-badge" class="room-code-badge hidden"></div>
+      <button class="btn btn-outline small" id="btn-sound-toggle">🔊</button>
+    </div>
+
+    <div id="status-bar" class="status-bar">White to move</div>
+
+    <div class="clocks-row" id="clocks-row">
+      <div class="clock-box" id="clock-black">
+        <span class="clock-label" id="clock-black-label">Black</span>
+        <span class="clock-time" id="clock-black-time">--:--</span>
+      </div>
+      <div class="clock-box" id="clock-white">
+        <span class="clock-label" id="clock-white-label">White</span>
+        <span class="clock-time" id="clock-white-time">--:--</span>
+      </div>
+    </div>
+
+    <div class="board-area">
+      <div id="board" class="board"></div>
+    </div>
+
+    <div id="promotion-modal" class="modal hidden">
+      <div class="modal-box">
+        <p>Promote pawn to:</p>
+        <div class="promo-choices" id="promo-choices"></div>
+      </div>
+    </div>
+
+    <div id="draw-offer-modal" class="modal hidden">
+      <div class="modal-box">
+        <p id="draw-offer-text">Opponent offered a draw</p>
+        <div class="modal-buttons">
+          <button class="btn btn-primary" id="btn-draw-accept">Accept</button>
+          <button class="btn btn-outline" id="btn-draw-decline">Decline</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="confirm-modal" class="modal hidden">
+      <div class="modal-box">
+        <p id="confirm-text">Are you sure?</p>
+        <div class="modal-buttons">
+          <button class="btn btn-primary" id="btn-confirm-yes">Yes</button>
+          <button class="btn btn-outline" id="btn-confirm-no">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="controls-row">
+      <button class="btn btn-outline" id="btn-flip">Flip Board</button>
+      <button class="btn btn-outline" id="btn-undo">Undo</button>
+      <button class="btn btn-outline" id="btn-new-game">New Game</button>
+      <button class="btn btn-outline" id="btn-draw-offer">Draw</button>
+      <button class="btn btn-danger" id="btn-resign">Resign</button>
+    </div>
+
+    <div class="history-panel">
+      <h3>Move History</h3>
+      <div id="move-history" class="move-history"></div>
+    </div>
+  </div>
+</section>
+
+<div id="toast" class="toast hidden"></div>
+
+<!-- Chess rules engine -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.13.4/chess.min.js"></script>
+<!-- Firebase (only used for online play) -->
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-database-compat.js"></script>
+
+<script src="script.js"></script>
+</body>
+</html>
